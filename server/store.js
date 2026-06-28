@@ -6,13 +6,23 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const dataPath = path.join(__dirname, "..", "data", "rentease-db.json");
+let memoryStore = null;
 
 async function readStore() {
+  if (memoryStore) {
+    return memoryStore;
+  }
+
   const raw = await fs.readFile(dataPath, "utf8");
   return JSON.parse(raw);
 }
 
 async function writeStore(store) {
+  if (memoryStore) {
+    memoryStore = store;
+    return;
+  }
+
   await fs.writeFile(dataPath, JSON.stringify(store, null, 2));
 }
 
@@ -42,10 +52,13 @@ function rentalDefaults(email) {
 export const db = {
   async init(products) {
     try {
-      await fs.access(dataPath);
+      const raw = await fs.readFile(dataPath, "utf8");
+      if (process.env.VERCEL) {
+        memoryStore = JSON.parse(raw);
+      }
     } catch {
       const passwordHash = await bcrypt.hash("admin123", 10);
-      await writeStore({
+      const seedStore = {
         users: [
           {
             id: "admin-user",
@@ -59,7 +72,14 @@ export const db = {
         products,
         rentals: rentalDefaults("admin@rentease.com"),
         supportRequests: []
-      });
+      };
+
+      if (process.env.VERCEL) {
+        memoryStore = seedStore;
+        return;
+      }
+
+      await writeStore(seedStore);
     }
   },
 
